@@ -2612,6 +2612,43 @@ class NNOpsCorrectnessTest(testing.TestCase):
             [[1e-1, 1e-3]],
         )
 
+    def test_normalize_zero_vector_gradients(self):
+        # Regression test for https://github.com/keras-team/keras/issues/23075
+        # ops.normalize(order=2) should not produce NaN gradients for zero
+        # vectors on the torch backend
+        if backend.backend() == "torch":
+            import torch
+
+            x = torch.zeros(2, 4, requires_grad=True)
+            knn.normalize(x, axis=-1, order=2).sum().backward()
+            self.assertFalse(
+                torch.isnan(x.grad).any().item(),
+                "NaN gradients detected for zero vector with order=2",
+            )
+        elif backend.backend() == "tensorflow":
+            import tensorflow as tf
+
+            x = tf.Variable(tf.zeros((2, 4)))
+            with tf.GradientTape() as tape:
+                out = knn.normalize(x, axis=-1, order=2)
+            grads = tape.gradient(out, x)
+            self.assertFalse(
+                tf.reduce_any(tf.math.is_nan(grads)).numpy(),
+                "NaN gradients detected for zero vector with order=2",
+            )
+        elif backend.backend() == "jax":
+            import jax
+
+            x = jax.numpy.zeros((2, 4))
+            grad_fn = jax.grad(
+                lambda x: knn.normalize(x, axis=-1, order=2).sum()
+            )
+            grads = grad_fn(x)
+            self.assertFalse(
+                jax.numpy.isnan(grads).any(),
+                "NaN gradients detected for zero vector with order=2",
+            )
+
     def test_psnr(self):
         x1 = np.array([[0.1, 0.2, 0.3], [0.4, 0.5, 0.6]])
         x2 = np.array([[0.2, 0.2, 0.3], [0.4, 0.6, 0.6]])
